@@ -4,6 +4,9 @@
 ** See Copyright Notice in lua.h
 */
 
+#if defined HAVE_CONFIG_H // LOL BEGIN
+#   include "config.h"
+#endif // LOL END
 
 #define linit_c
 #define LUA_LIB
@@ -44,8 +47,10 @@ static const luaL_Reg loadedlibs[] = {
   {LUA_LOADLIBNAME, luaopen_package},
   {LUA_COLIBNAME, luaopen_coroutine},
   {LUA_TABLIBNAME, luaopen_table},
+#if 0 // LOL BEGIN
   {LUA_IOLIBNAME, luaopen_io},
   {LUA_OSLIBNAME, luaopen_os},
+#endif // LOL END
   {LUA_STRLIBNAME, luaopen_string},
   {LUA_MATHLIBNAME, luaopen_math},
   {LUA_UTF8LIBNAME, luaopen_utf8},

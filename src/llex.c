@@ -4,6 +4,10 @@
 ** See Copyright Notice in lua.h
 */
 
+#if defined HAVE_CONFIG_H // LOL BEGIN
+#   include "config.h"
+#endif // LOL END
+
 #define llex_c
 #define LUA_CORE
 
@@ -12,6 +16,10 @@
 
 #include <locale.h>
 #include <string.h>
+
+#if defined __ANDROID__ // LOL BEGIN
+#   define getlocaledecpoint() '.'
+#endif // LOL END
 
 #include "lua.h"
 

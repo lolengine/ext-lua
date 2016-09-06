@@ -30,6 +30,9 @@
 #include "ltm.h"
 #include "lvm.h"
 
+#if defined HAVE_CONFIG_H // LOL BEGIN
+#   include "config.h"
+#endif // LOL END
 
 /* limit for table tag-method chains (to avoid loops) */
 #define MAXTAGLOOP	2000

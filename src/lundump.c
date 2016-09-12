@@ -10,10 +10,6 @@
 #include "lprefix.h"
 
 
-#if defined HAVE_CONFIG_H // LOL BEGIN
-#   include "config.h"
-#endif // LOL END
-
 #include <string.h>
 
 #include "lua.h"

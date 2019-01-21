@@ -13,6 +13,10 @@
 #include <locale.h>
 #include <string.h>
 
+#if defined __ANDROID__ // LOL BEGIN
+#   define getlocaledecpoint() '.'
+#endif // LOL END
+
 #include "lua.h"
 
 #include "lctype.h"

@@ -25,7 +25,7 @@
 
 #define LUA_VERSION	"Lua " LUA_VERSION_MAJOR "." LUA_VERSION_MINOR
 #define LUA_RELEASE	LUA_VERSION "." LUA_VERSION_RELEASE
-#define LUA_COPYRIGHT	LUA_RELEASE "  Copyright (C) 1994-2018 Lua.org, PUC-Rio"
+#define LUA_COPYRIGHT	LUA_RELEASE "  Copyright (C) 1994-2019 Lua.org, PUC-Rio"
 #define LUA_AUTHORS	"R. Ierusalimschy, L. H. de Figueiredo, W. Celes"
 
 
@@ -128,7 +128,7 @@ typedef void * (*lua_Alloc) (void *ud, void *ptr, size_t osize, size_t nsize);
 /*
 ** Type for warning functions
 */
-typedef void (*lua_WarnFunction) (void **pud, const char *msg);
+typedef void (*lua_WarnFunction) (void *ud, const char *msg, int tocont);
 
 
 
@@ -309,7 +309,7 @@ LUA_API int (lua_isyieldable) (lua_State *L);
 ** Warning-related functions
 */
 LUA_API void (lua_setwarnf) (lua_State *L, lua_WarnFunction f, void *ud);
-LUA_API void (lua_warning)  (lua_State *L, const char *msg);
+LUA_API void (lua_warning)  (lua_State *L, const char *msg, int tocont);
 
 
 /*
@@ -487,7 +487,7 @@ struct lua_Debug {
 
 
 /******************************************************************************
-* Copyright (C) 1994-2018 Lua.org, PUC-Rio.
+* Copyright (C) 1994-2019 Lua.org, PUC-Rio.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the

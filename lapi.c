@@ -414,13 +414,18 @@ LUA_API lua_CFunction lua_tocfunction (lua_State *L, int idx) {
 }
 
 
-LUA_API void *lua_touserdata (lua_State *L, int idx) {
-  const TValue *o = index2value(L, idx);
+static void *touserdata (const TValue *o) {
   switch (ttype(o)) {
     case LUA_TUSERDATA: return getudatamem(uvalue(o));
     case LUA_TLIGHTUSERDATA: return pvalue(o);
     default: return NULL;
   }
+}
+
+
+LUA_API void *lua_touserdata (lua_State *L, int idx) {
+  const TValue *o = index2value(L, idx);
+  return touserdata(o);
 }
 
 
@@ -430,17 +435,25 @@ LUA_API lua_State *lua_tothread (lua_State *L, int idx) {
 }
 
 
+/*
+** Returns a pointer to the internal representation of an object.
+** Note that ANSI C does not allow the conversion of a pointer to
+** function to a 'void*', so the conversion here goes through
+** a 'size_t'. (As the returned pointer is only informative, this
+** conversion should not be a problem.)
+*/
 LUA_API const void *lua_topointer (lua_State *L, int idx) {
   const TValue *o = index2value(L, idx);
   switch (ttypetag(o)) {
-    case LUA_TTABLE: return hvalue(o);
-    case LUA_TLCL: return clLvalue(o);
-    case LUA_TCCL: return clCvalue(o);
     case LUA_TLCF: return cast_voidp(cast_sizet(fvalue(o)));
-    case LUA_TTHREAD: return thvalue(o);
-    case LUA_TUSERDATA: return getudatamem(uvalue(o));
-    case LUA_TLIGHTUSERDATA: return pvalue(o);
-    default: return NULL;
+    case LUA_TUSERDATA: case LUA_TLIGHTUSERDATA:
+      return touserdata(o);
+    default: {
+      if (iscollectable(o))
+        return gcvalue(o);
+      else
+        return NULL;
+    }
   }
 }
 
@@ -923,8 +936,8 @@ LUA_API int lua_setiuservalue (lua_State *L, int idx, int n) {
   api_checknelems(L, 1);
   o = index2value(L, idx);
   api_check(L, ttisfulluserdata(o), "full userdata expected");
-  if (!(0 < n && n <= uvalue(o)->nuvalue))
-    res = 0;
+  if (!(cast_uint(n) - 1u < cast_uint(uvalue(o)->nuvalue)))
+    res = 0;  /* 'n' not in [1, uvalue(o)->nuvalue] */
   else {
     setobj(L, &uvalue(o)->uv[n - 1].uv, s2v(L->top - 1));
     luaC_barrierback(L, gcvalue(o), s2v(L->top - 1));
@@ -1141,22 +1154,21 @@ LUA_API int lua_gc (lua_State *L, int what, ...) {
       break;
     }
     case LUA_GCGEN: {
-      int oldmode = g->gckind;
       int minormul = va_arg(argp, int);
       int majormul = va_arg(argp, int);
+      res = isdecGCmodegen(g) ? LUA_GCGEN : LUA_GCINC;
       if (minormul != 0)
         g->genminormul = minormul;
       if (majormul != 0)
         setgcparam(g->genmajormul, majormul);
       luaC_changemode(L, KGC_GEN);
-      res = (oldmode == KGC_GEN) ? LUA_GCGEN : LUA_GCINC;
       break;
     }
     case LUA_GCINC: {
-      int oldmode = g->gckind;
       int pause = va_arg(argp, int);
       int stepmul = va_arg(argp, int);
       int stepsize = va_arg(argp, int);
+      res = isdecGCmodegen(g) ? LUA_GCGEN : LUA_GCINC;
       if (pause != 0)
         setgcparam(g->gcpause, pause);
       if (stepmul != 0)
@@ -1164,7 +1176,6 @@ LUA_API int lua_gc (lua_State *L, int what, ...) {
       if (stepsize != 0)
         g->gcstepsize = stepsize;
       luaC_changemode(L, KGC_INC);
-      res = (oldmode == KGC_GEN) ? LUA_GCGEN : LUA_GCINC;
       break;
     }
     default: res = -1;  /* invalid option */
@@ -1275,9 +1286,9 @@ void lua_setwarnf (lua_State *L, lua_WarnFunction f, void *ud) {
 }
 
 
-void lua_warning (lua_State *L, const char *msg) {
+void lua_warning (lua_State *L, const char *msg, int tocont) {
   lua_lock(L);
-  luaE_warning(L, msg);
+  luaE_warning(L, msg, tocont);
   lua_unlock(L);
 }
 
@@ -1302,7 +1313,8 @@ static const char *aux_upvalue (TValue *fi, int n, TValue **val,
   switch (ttypetag(fi)) {
     case LUA_TCCL: {  /* C closure */
       CClosure *f = clCvalue(fi);
-      if (!(1 <= n && n <= f->nupvalues)) return NULL;
+      if (!(cast_uint(n) - 1u < cast_uint(f->nupvalues)))
+        return NULL;  /* 'n' not in [1, f->nupvalues] */
       *val = &f->upvalue[n-1];
       if (owner) *owner = obj2gco(f);
       return "";
@@ -1311,7 +1323,8 @@ static const char *aux_upvalue (TValue *fi, int n, TValue **val,
       LClosure *f = clLvalue(fi);
       TString *name;
       Proto *p = f->p;
-      if (!(1 <= n && n <= p->sizeupvalues)) return NULL;
+      if (!(cast_uint(n) - 1u  < cast_uint(p->sizeupvalues)))
+        return NULL;  /* 'n' not in [1, p->sizeupvalues] */
       *val = f->upvals[n-1]->v;
       if (owner) *owner = obj2gco(f->upvals[n - 1]);
       name = p->upvalues[n-1].name;

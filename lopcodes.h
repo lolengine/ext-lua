@@ -90,7 +90,6 @@ enum OpMode {iABC, iABx, iAsBx, iAx, isJ};  /* basic instruction formats */
 #define MAXARG_B	((1<<SIZE_B)-1)
 #define MAXARG_C	((1<<SIZE_C)-1)
 #define OFFSET_sC	(MAXARG_C >> 1)
-#define MAXARG_Cx	((1<<(SIZE_C + 1))-1)
 
 
 /* creates a mask with 'n' 1 bits at position 'p' */
@@ -233,8 +232,8 @@ OP_BANDK,/*	A B C	R(A) := R(B) & K(C):integer			*/
 OP_BORK,/*	A B C	R(A) := R(B) | K(C):integer			*/
 OP_BXORK,/*	A B C	R(A) := R(B) ~ K(C):integer			*/
 
-OP_SHRI,/*	A B C	R(A) := R(B) >> C				*/
-OP_SHLI,/*	A B C	R(A) := C << R(B)				*/
+OP_SHRI,/*	A B sC	R(A) := R(B) >> C				*/
+OP_SHLI,/*	A B sC	R(A) := C << R(B)				*/
 
 OP_ADD,/*	A B C	R(A) := R(B) + R(C)				*/
 OP_SUB,/*	A B C	R(A) := R(B) - R(C)				*/
@@ -272,7 +271,7 @@ OP_GTI,/*	A sB	if ((R(A) > sB) ~= k) then pc++			*/
 OP_GEI,/*	A sB	if ((R(A) >= sB) ~= k) then pc++		*/
 
 OP_TEST,/*	A 	if (not R(A) == k) then pc++			*/
-OP_TESTSET,/*	A B	if (not R(B) == k) then R(A) := R(B) else pc++	*/
+OP_TESTSET,/*	A B	if (not R(B) == k) then pc++ else R(A) := R(B)	*/
 
 OP_CALL,/*	A B C	R(A), ... ,R(A+C-2) := R(A)(R(A+1), ... ,R(A+B-1)) */
 OP_TAILCALL,/*	A B C	return R(A)(R(A+1), ... ,R(A+B-1))		*/
@@ -280,10 +279,6 @@ OP_TAILCALL,/*	A B C	return R(A)(R(A+1), ... ,R(A+B-1))		*/
 OP_RETURN,/*	A B C	return R(A), ... ,R(A+B-2)	(see note)	*/
 OP_RETURN0,/*	  	return 						*/
 OP_RETURN1,/*	A 	return R(A)					*/
-
-OP_FORLOOP1,/*	A Bx	R(A)++;
-			if R(A) <= R(A+1) then { pc-=Bx; R(A+3)=R(A) }	*/
-OP_FORPREP1,/*	A Bx	R(A)--; pc+=Bx					*/
 
 OP_FORLOOP,/*	A Bx	R(A)+=R(A+2);
 			if R(A) <?= R(A+1) then { pc-=Bx; R(A+3)=R(A) }	*/
@@ -299,21 +294,21 @@ OP_CLOSURE,/*	A Bx	R(A) := closure(KPROTO[Bx])			*/
 
 OP_VARARG,/*	A C  	R(A), R(A+1), ..., R(A+C-2) = vararg		*/
 
-OP_PREPVARARG,/*A 	(adjust vararg parameters)			*/
+OP_VARARGPREP,/*A 	(adjust vararg parameters)			*/
 
 OP_EXTRAARG/*	Ax	extra (larger) argument for previous opcode	*/
 } OpCode;
 
 
-#define NUM_OPCODES	(cast_int(OP_EXTRAARG) + 1)
+#define NUM_OPCODES	((int)(OP_EXTRAARG) + 1)
 
 
 
 /*===========================================================================
   Notes:
-  (*) In OP_CALL, if (B == 0) then B = top. If (C == 0), then 'top' is
-  set to last_result+1, so next open instruction (OP_CALL, OP_RETURN*,
-  OP_SETLIST) may use 'top'.
+  (*) In OP_CALL, if (B == 0) then B = top - A. If (C == 0), then
+  'top' is set to last_result+1, so next open instruction (OP_CALL,
+  OP_RETURN*, OP_SETLIST) may use 'top'.
 
   (*) In OP_VARARG, if (C == 0) then use actual number of varargs and
   set top (like in OP_CALL with C == 0).
@@ -335,6 +330,9 @@ OP_EXTRAARG/*	Ax	extra (larger) argument for previous opcode	*/
   vararg, which must be corrected before returning. When 'k' is true,
   C > 0 means the function is vararg and (C - 1) is its number of
   fixed parameters.
+
+  (*) In comparisons with an immediate operand, C signals whether the
+  original operand was a float.
 
 ===========================================================================*/
 

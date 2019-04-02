@@ -100,13 +100,13 @@ void luaE_setdebt (global_State *g, l_mem debt) {
 ** Increment count of "C calls" and check for overflows. In case of
 ** a stack overflow, check appropriate error ("regular" overflow or
 ** overflow while handling stack overflow).
-** If 'nCcalls' is larger than LUAI_MAXCCALLS but smaller than
-** LUAI_MAXCCALLS + CSTACKCF (plus 2 to avoid by-one errors), it means
+** If 'nCcalls' is larger than LUAI_MAXCSTACK but smaller than
+** LUAI_MAXCSTACK + CSTACKCF (plus 2 to avoid by-one errors), it means
 ** it has just entered the "overflow zone", so the function raises an
 ** overflow error.
-** If 'nCcalls' is larger than LUAI_MAXCCALLS + CSTACKCF + 2
+** If 'nCcalls' is larger than LUAI_MAXCSTACK + CSTACKCF + 2
 ** (which means it is already handling an overflow) but smaller than
-** 9/8 of LUAI_MAXCCALLS, does not report an error (to allow message
+** 9/8 of LUAI_MAXCSTACK, does not report an error (to allow message
 ** handling to work).
 ** Otherwise, report a stack overflow while handling a stack overflow
 ** (probably caused by a repeating error in the message handling
@@ -115,16 +115,16 @@ void luaE_setdebt (global_State *g, l_mem debt) {
 void luaE_enterCcall (lua_State *L) {
   int ncalls = getCcalls(L);
   L->nCcalls++;
-  if (ncalls >= LUAI_MAXCCALLS) {  /* possible overflow? */
+  if (ncalls >= LUAI_MAXCSTACK) {  /* possible overflow? */
     luaE_freeCI(L);  /* release unused CIs */
     ncalls = getCcalls(L);  /* update call count */
-    if (ncalls >= LUAI_MAXCCALLS) {  /* still overflow? */
-      if (ncalls <= LUAI_MAXCCALLS + CSTACKCF + 2) {
+    if (ncalls >= LUAI_MAXCSTACK) {  /* still overflow? */
+      if (ncalls <= LUAI_MAXCSTACK + CSTACKCF + 2) {
         /* no error before increments; raise the error now */
         L->nCcalls += (CSTACKCF + 4);  /* avoid raising it again */
         luaG_runerror(L, "C stack overflow");
       }
-      else if (ncalls >= (LUAI_MAXCCALLS + (LUAI_MAXCCALLS >> 3)))
+      else if (ncalls >= (LUAI_MAXCSTACK + (LUAI_MAXCSTACK >> 3)))
         luaD_throw(L, LUA_ERRERR);  /* error while handling stack error */
     }
   }
@@ -233,7 +233,8 @@ static void init_registry (lua_State *L, global_State *g) {
 
 /*
 ** open parts of the state that may cause memory-allocation errors.
-** ('ttisnil(&g->nilvalue)'' flags that the state was completely build)
+** ('g->nilvalue' being a nil value flags that the state was completely
+** build.)
 */
 static void f_luaopen (lua_State *L, void *ud) {
   global_State *g = G(L);
@@ -386,6 +387,7 @@ LUA_API lua_State *lua_newstate (lua_Alloc f, void *ud) {
   g->twups = NULL;
   g->totalbytes = sizeof(LG);
   g->GCdebt = 0;
+  g->lastatomic = 0;
   setivalue(&g->nilvalue, 0);  /* to signal that state is not yet built */
   setgcparam(g->gcpause, LUAI_GCPAUSE);
   setgcparam(g->gcstepmul, LUAI_GCMUL);
@@ -409,10 +411,10 @@ LUA_API void lua_close (lua_State *L) {
 }
 
 
-void luaE_warning (lua_State *L, const char *msg) {
+void luaE_warning (lua_State *L, const char *msg, int tocont) {
   lua_WarnFunction wf = G(L)->warnf;
   if (wf != NULL)
-    wf(&G(L)->ud_warn, msg);
+    wf(G(L)->ud_warn, msg, tocont);
 }
 
 

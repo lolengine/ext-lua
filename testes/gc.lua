@@ -11,6 +11,14 @@ collectgarbage()
 
 local oldmode = collectgarbage("incremental")
 
+-- changing modes should return previous mode
+assert(collectgarbage("generational") == "incremental")
+assert(collectgarbage("generational") == "generational")
+assert(collectgarbage("incremental") == "generational")
+assert(collectgarbage("incremental") == "incremental")
+
+
+local function nop () end
 
 local function gcinfo ()
   return collectgarbage"count" * 1024
@@ -382,7 +390,7 @@ if T then
   collectgarbage()
   for i = 1, 10 do assert(s[i]) end
 
-  getmetatable(u).__gc = false
+  getmetatable(u).__gc = nil
 
 end
 print '+'
@@ -598,8 +606,8 @@ if T then
   collectgarbage("stop")
   local x = T.newuserdata(0)
   local y = T.newuserdata(0)
-  debug.setmetatable(y, {__gc = true})   -- bless the new udata before...
-  debug.setmetatable(x, {__gc = true})   -- ...the old one
+  debug.setmetatable(y, {__gc = nop})   -- bless the new udata before...
+  debug.setmetatable(x, {__gc = nop})   -- ...the old one
   assert(T.gccolor(y) == "white")
   T.checkmemory()
   collectgarbage("restart")
@@ -625,6 +633,7 @@ if T then
   assert(T.totalmem("thread") == t + 1)
 end
 
+
 -- create an object to be collected when state is closed
 do
   local setmetatable,assert,type,print,getmetatable =
@@ -644,7 +653,7 @@ end
 
 -- create several objects to raise errors when collected while closing state
 if T then
-  local error, assert, warn, find = error, assert, warn, string.find
+  local error, assert, find = error, assert, string.find
   local n = 0
   local lastmsg
   local mt = {__gc = function (o)

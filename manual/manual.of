@@ -83,25 +83,10 @@ it usually represents the absence of a useful value.
 The type @emph{boolean} has two values, @false and @true.
 Both @nil and @false make a condition false;
 any other value makes it true.
-The type @emph{number} represents both
-integer numbers and real (floating-point) numbers.
-The type @emph{string} represents immutable sequences of bytes.
-@index{eight-bit clean}
-Lua is 8-bit clean:
-strings can contain any 8-bit value,
-including @x{embedded zeros} (@Char{\0}).
-Lua is also encoding-agnostic;
-it makes no assumptions about the contents of a string.
 
-The type @emph{number} uses two internal representations,
-or two @x{subtypes},
-one called @def{integer} and the other called @def{float}.
-Lua has explicit rules about when each representation is used,
-but it also converts between them automatically as needed @see{coercion}.
-Therefore,
-the programmer may choose to mostly ignore the difference
-between integers and floats
-or to assume complete control over the representation of each number.
+The type @emph{number} represents both
+integer numbers and real (floating-point) numbers,
+using two @x{subtypes}: @def{integer} and @def{float}.
 Standard Lua uses 64-bit integers and double-precision (64-bit) floats,
 but you can also compile Lua so that it
 uses 32-bit integers and/or single-precision (32-bit) floats.
@@ -109,6 +94,22 @@ The option with 32 bits for both integers and floats
 is particularly attractive
 for small machines and embedded systems.
 (See macro @id{LUA_32BITS} in file @id{luaconf.h}.)
+
+Lua has explicit rules about when each subtype is used,
+but it also converts between them automatically as needed @see{coercion}.
+Therefore,
+the programmer may choose to mostly ignore the difference
+between integers and floats
+or to assume complete control over the representation of each number.
+
+The type @emph{string} represents immutable sequences of bytes.
+@index{eight-bit clean}
+Lua is 8-bit clean:
+strings can contain any 8-bit value,
+including @x{embedded zeros} (@Char{\0}).
+Lua is also encoding-agnostic;
+it makes no assumptions about the contents of a string.
+The length of any string in Lua must fit in a Lua integer.
 
 Lua can call (and manipulate) functions written in Lua and
 functions written in C @see{functioncall}.
@@ -142,7 +143,7 @@ that is, @x{arrays} that can have as indices not only numbers,
 but any Lua value except @nil and @x{NaN}.
 (@emphx{Not a Number} is a special floating-point value
 used by the @x{IEEE 754} standard to represent
-undefined or unrepresentable numerical results, such as @T{0/0}.)
+undefined numerical results, such as @T{0/0}.)
 Tables can be @emph{heterogeneous};
 that is, they can contain values of all types (except @nil).
 Any key with value @nil is not considered part of the table.
@@ -593,7 +594,7 @@ controls how long the collector waits before starting a new cycle.
 The collector starts a new cycle when the use of memory
 hits @M{n%} of the use after the previous collection.
 Larger values make the collector less aggressive.
-Values smaller than 100 mean the collector will not wait to
+Values less than 100 mean the collector will not wait to
 start a new cycle.
 A value of 200 means that the collector waits for the total memory in use
 to double before starting a new cycle.
@@ -607,7 +608,7 @@ how many elements it marks or sweeps for each
 kilobyte of memory allocated.
 Larger values make the collector more aggressive but also increase
 the size of each incremental step.
-You should not use values smaller than 100,
+You should not use values less than 100,
 because they make the collector too slow and
 can result in the collector never finishing a cycle.
 The default value is 100;  the maximum value is 1000.
@@ -669,8 +670,8 @@ are called when the garbage collector detects that the
 corresponding table or userdata is unreachable.
 Finalizers allow you to coordinate Lua's garbage collection
 with external resource management
-(such as closing files, network or database connections,
-or freeing your own memory).
+such as closing files, network or database connections,
+or freeing your own memory.
 
 For an object (table or userdata) to be finalized when collected,
 you must @emph{mark} it for finalization.
@@ -688,10 +689,8 @@ After the collection,
 Lua goes through that list.
 For each object in the list,
 it checks the object's @idx{__gc} metamethod:
-If it is a function,
-Lua calls it with the object as its single argument;
-if the metamethod is not a function,
-Lua simply ignores it.
+If it is present,
+Lua calls it with the object as its single argument.
 
 At the end of each garbage-collection cycle,
 the finalizers for objects are called in
@@ -724,6 +723,9 @@ If any finalizer marks objects for collection during that phase,
 these marks have no effect.
 
 Finalizers cannot yield.
+
+Any error while running a finalizer generates a warning;
+it is not propagated.
 
 }
 
@@ -1002,6 +1004,8 @@ the escape sequence @T{\u{@rep{XXX}}}
 (note the mandatory enclosing brackets),
 where @rep{XXX} is a sequence of one or more hexadecimal digits
 representing the character code point.
+This code point can be any value less than @M{2@sp{31}}.
+(Lua uses the original UTF-8 specification here.)
 
 Literal strings can also be defined using a long format
 enclosed by @def{long brackets}.
@@ -1322,11 +1326,12 @@ labels in Lua are considered statements too:
 }
 
 A label is visible in the entire block where it is defined,
-except
-inside nested blocks where a label with the same name is defined and
-inside nested functions.
+except inside nested functions.
 A goto may jump to any visible label as long as it does not
 enter into the scope of a local variable.
+A label should not be declared
+where a label with the same name is visible,
+even if this other label has been declared in an enclosing block.
 
 Labels and empty statements are called @def{void statements},
 as they perform no actions.
@@ -1365,73 +1370,49 @@ because now @Rw{return} is the last statement in its (inner) block.
 The @Rw{for} statement has two forms:
 one numerical and one generic.
 
+@sect4{@title{The numerical @Rw{for} loop}
+
 The numerical @Rw{for} loop repeats a block of code while a
-control variable runs through an arithmetic progression.
+control variable goes through an arithmetic progression.
 It has the following syntax:
 @Produc{
 @producname{stat}@producbody{@Rw{for} @bnfNter{Name} @bnfter{=}
   exp @bnfter{,} exp @bnfopt{@bnfter{,} exp} @Rw{do} block @Rw{end}}
 }
-The @emph{block} is repeated for @emph{name} starting at the value of
-the first @emph{exp}, until it passes the second @emph{exp} by steps of the
-third @emph{exp}.
-More precisely, a @Rw{for} statement like
-@verbatim{
-for v = @rep{e1}, @rep{e2}, @rep{e3} do @rep{block} end
-}
-is equivalent to the code:
-@verbatim{
-do
-  local @rep{var}, @rep{limit}, @rep{step} = tonumber(@rep{e1}), tonumber(@rep{e2}), tonumber(@rep{e3})
-  if not (@rep{var} and @rep{limit} and @rep{step}) then error() end
-  @rep{var} = @rep{var} - @rep{step}
-  while true do
-    @rep{var} = @rep{var} + @rep{step}
-    if (@rep{step} >= 0 and @rep{var} > @rep{limit}) or (@rep{step} < 0 and @rep{var} < @rep{limit}) then
-      break
-    end
-    local v = @rep{var}
-    @rep{block}
-  end
-end
-}
+The given identifier (@bnfNter{Name}) defines the control variable,
+which is local to the loop body (@emph{block}).
 
-Note the following:
-@itemize{
+The loop starts by evaluating once the three control expressions;
+they must all result in numbers.
+Their values are called respectively
+the @emph{initial value}, the @emph{limit}, and the @emph{step}.
+If the step is absent, it defaults @N{to 1}.
+Then the loop body is repeated with the value of the control variable
+going through an arithmetic progression,
+starting at the initial value,
+with a common difference given by the step,
+until that value passes the limit.
+A negative step makes a decreasing sequence;
+a step equal to zero raises an error.
+If the initial value is already greater than the limit
+(or less than, if the step is negative), the body is not executed.
 
-@item{
-All three control expressions are evaluated only once,
-before the loop starts.
-They must all result in numbers.
-}
+If both the initial value and the step are integers,
+the loop is done with integers;
+in this case, the range of the control variable is limited
+by the range of integers.
+Otherwise, the loop is done with floats.
+(Beware of floating-point accuracy in this case.)
 
-@item{
-@T{@rep{var}}, @T{@rep{limit}}, and @T{@rep{step}} are invisible variables.
-The names shown here are for explanatory purposes only.
-}
-
-@item{
-If the third expression (the step) is absent,
-then a step @N{of 1} is used.
-}
-
-@item{
-You can use @Rw{break} and @Rw{goto} to exit a @Rw{for} loop.
-}
-
-@item{
-The loop variable @T{v} is local to the loop body.
+You should not change the value of the control variable
+during the loop.
 If you need its value after the loop,
 assign it to another variable before exiting the loop.
-}
-
-@item{
-The values in @rep{var}, @rep{limit}, and @rep{step}
-can be integers or floats.
-All operations on them respect the usual rules in Lua.
-}
 
 }
+
+@sect4{@title{The generic @Rw{for} loop}
+
 
 The generic @Rw{for} statement works over functions,
 called @def{iterators}.
@@ -1494,6 +1475,8 @@ then assign them to other variables before breaking or exiting the loop.
 
 }
 
+}
+
 @sect3{funcstat| @title{Function Calls as Statements}
 To allow possible side-effects,
 function calls can be executed as statements:
@@ -1536,7 +1519,7 @@ goes out of scope, including normal block termination,
 exiting its block by @Rw{break}/@Rw{goto}/@Rw{return},
 or exiting by an error.
 
-Here, to \emph{close} a value means
+Here, to @emph{close} a value means
 to call its @idx{__close} metamethod.
 If the value is @nil, it is ignored;
 otherwise,
@@ -1814,7 +1797,7 @@ A comparison @T{a > b} is translated to @T{b < a}
 and @T{a >= b} is translated to @T{b <= a}.
 
 Following the @x{IEEE 754} standard,
-@x{NaN} is considered neither smaller than,
+@x{NaN} is considered neither less than,
 nor equal to, nor greater than any value (including itself).
 
 }
@@ -2166,7 +2149,7 @@ then the function returns with no results.
 @index{multiple return}
 There is a system-dependent limit on the number of values
 that a function may return.
-This limit is guaranteed to be larger than 1000.
+This limit is guaranteed to be greater than 1000.
 
 The @emphx{colon} syntax
 is used for defining @def{methods},
@@ -2362,7 +2345,7 @@ but it also can be any positive index after the stack top
 within the space allocated for the stack,
 that is, indices up to the stack size.
 (Note that 0 is never an acceptable index.)
-Indices to upvalues @see{c-closure} larger than the real number
+Indices to upvalues @see{c-closure} greater than the real number
 of upvalues in the current @N{C function} are also acceptable (but invalid).
 Except when noted otherwise,
 functions in the API work with acceptable indices.
@@ -2874,7 +2857,7 @@ Ensures that the stack has space for at least @id{n} extra slots
 (that is, that you can safely push up to @id{n} values into it).
 It returns false if it cannot fulfill the request,
 either because it would cause the stack
-to be larger than a fixed maximum size
+to be greater than a fixed maximum size
 (typically at least several thousand elements) or
 because it cannot allocate memory for the extra space.
 This function never shrinks the stack;
@@ -4048,7 +4031,7 @@ for the @Q{newindex} event @see{metatable}.
 
 Accepts any index, @N{or 0},
 and sets the stack top to this index.
-If the new top is larger than the old one,
+If the new top is greater than the old one,
 then the new elements are filled with @nil.
 If @id{index} @N{is 0}, then all stack elements are removed.
 
@@ -4059,7 +4042,7 @@ If @id{index} @N{is 0}, then all stack elements are removed.
 
 Sets the @x{warning function} to be used by Lua to emit warnings
 @see{lua_WarnFunction}.
-The @id{ud} parameter initializes the slot @id{pud} passed to
+The @id{ud} parameter sets the value @id{ud} passed to
 the warning function.
 
 }
@@ -4235,7 +4218,7 @@ indicates whether the operation succeeded.
 
 Converts the value at the given index to a generic
 @N{C pointer} (@T{void*}).
-The value can be a userdata, a table, a thread, or a function;
+The value can be a userdata, a table, a thread, a string, or a function;
 otherwise, @id{lua_topointer} returns @id{NULL}.
 Different objects will give different pointers.
 There is no way to convert the pointer back to its original value.
@@ -4323,25 +4306,24 @@ Returns the version number of this core.
 }
 
 @APIEntry{
-typedef void (*lua_WarnFunction) (void **pud, const char *msg);|
+typedef void (*lua_WarnFunction) (void *ud, const char *msg, int tocont);|
 
 The type of @x{warning function}s, called by Lua to emit warnings.
-The first parameter is the address of a writable slot,
-constant for a given Lua state and
-initialized by @Lid{lua_setwarnf}.
+The first parameter is an opaque pointer
+set by @Lid{lua_setwarnf}.
 The second parameter is the warning message.
-This function should assume that
-a message not ending with an end-of-line will be
-continued by the message in the next call.
+The third parameter is a boolean that
+indicates whether the message is
+to be continued by the message in the next call.
 
 }
 
 @APIEntry{
-void lua_warning (lua_State *L, const char *msg);|
+void lua_warning (lua_State *L, const char *msg, int tocont);|
 @apii{0,0,-}
 
 Emits a warning with the given message.
-A message not ending with an end-of-line should be
+A message in a call with @id{tocont} true should be
 continued in another call to this function.
 
 }
@@ -5052,7 +5034,7 @@ size @id{sz} with a call @T{luaL_buffinitsize(L, &b, sz)}.}
 @item{
 Finish by calling @T{luaL_pushresultsize(&b, sz)},
 where @id{sz} is the total size of the resulting string
-copied into that space (which may be smaller than or
+copied into that space (which may be less than or
 equal to the preallocated size).
 }
 
@@ -6273,11 +6255,12 @@ The current value of this variable is @St{Lua 5.4}.
 
 }
 
-@LibEntry{warn (message)|
+@LibEntry{warn (message [, tocont])|
 
 Emits a warning with the given message.
-Note that messages not ending with an end-of-line
-are assumed to be continued by the message in the next call.
+A message in a call with @id{tocont} true should be
+continued in another call to this function.
+The default for @id{tocont} is false.
 
 }
 
@@ -6711,8 +6694,10 @@ to save space.
 
 Functions with upvalues have only their number of upvalues saved.
 When (re)loaded,
-those upvalues receive fresh instances containing @nil.
-(You can use the debug library to serialize
+those upvalues receive fresh instances.
+(See the @Lid{load} function for details about
+how these upvalues are initialized.
+You can use the debug library to serialize
 and reload the upvalues of a function
 in a way adequate to your needs.)
 
@@ -6746,12 +6731,11 @@ after the two indices.
 Returns a formatted version of its variable number of arguments
 following the description given in its first argument (which must be a string).
 The format string follows the same rules as the @ANSI{sprintf}.
-The only differences are that the options/modifiers
-@T{*}, @id{h}, @id{L}, @id{l}, @id{n},
-and @id{p} are not supported
-and that there is an extra option, @id{q}.
+The only differences are that the conversion specifiers and modifiers
+@T{*}, @id{h}, @id{L}, @id{l}, and @id{n} are not supported
+and that there is an extra specifier, @id{q}.
 
-The @id{q} option formats booleans, nil, numbers, and strings
+The specifier @id{q} formats booleans, nil, numbers, and strings
 in a way that the result is a valid constant in Lua source code.
 Booleans and nil are written in the obvious way
 (@id{true}, @id{false}, @id{nil}).
@@ -6769,32 +6753,44 @@ may produce the string:
 "a string with \"quotes\" and \
  new line"
 }
+This specifier does not support modifiers (flags, width, length).
 
-Options
+The conversion specifiers
 @id{A}, @id{a}, @id{E}, @id{e}, @id{f},
 @id{G}, and @id{g} all expect a number as argument.
-Options @id{c}, @id{d},
+The specifiers @id{c}, @id{d},
 @id{i}, @id{o}, @id{u}, @id{X}, and @id{x}
 expect an integer.
 When Lua is compiled with a C89 compiler,
-options @id{A} and @id{a} (hexadecimal floats)
-do not support any modifier (flags, width, length).
+the specifiers @id{A} and @id{a} (hexadecimal floats)
+do not support modifiers.
 
-Option @id{s} expects a string;
+The specifier @id{s} expects a string;
 if its argument is not a string,
 it is converted to one following the same rules of @Lid{tostring}.
-If the option has any modifier (flags, width, length),
-the string argument should not contain @x{embedded zeros}.
+If the specifier has any modifier,
+the corresponding string argument should not contain @x{embedded zeros}.
+
+The specifier @id{p} formats the pointer
+returned by @Lid{lua_topointer}.
+That gives a unique string identifier for tables, userdata,
+threads, strings, and functions.
+For other values (numbers, nil, booleans),
+this specifier results in a string representing
+the pointer @id{NULL}.
 
 }
 
-@LibEntry{string.gmatch (s, pattern)|
+@LibEntry{string.gmatch (s, pattern [, init])|
 Returns an iterator function that,
 each time it is called,
 returns the next captures from @id{pattern} @see{pm}
 over the string @id{s}.
 If @id{pattern} specifies no captures,
 then the whole match is produced in each call.
+A third, optional numeric argument @id{init} specifies
+where to start the search;
+its default value @N{is 1} and can be negative.
 
 As an example, the following loop
 will iterate over all the words from string @id{s},
@@ -6883,6 +6879,7 @@ x = string.gsub("$name-$version.tar.gz", "%$(%w+)", t)
 }
 
 @LibEntry{string.len (s)|
+
 Receives a string and returns its length.
 The empty string @T{""} has length 0.
 Embedded zeros are counted,
@@ -6891,6 +6888,7 @@ so @T{"a\000bc\000"} has length 5.
 }
 
 @LibEntry{string.lower (s)|
+
 Receives a string and returns a copy of this string with all
 uppercase letters changed to lowercase.
 All other characters are left unchanged.
@@ -6899,6 +6897,7 @@ The definition of what an uppercase letter is depends on the current locale.
 }
 
 @LibEntry{string.match (s, pattern [, init])|
+
 Looks for the first @emph{match} of
 @id{pattern} @see{pm} in the string @id{s}.
 If it finds one, then @id{match} returns
@@ -6930,6 +6929,7 @@ The format string cannot have the variable-length options
 }
 
 @LibEntry{string.rep (s, n [, sep])|
+
 Returns a string that is the concatenation of @id{n} copies of
 the string @id{s} separated by the string @id{sep}.
 The default value for @id{sep} is the empty string
@@ -6942,11 +6942,13 @@ with a single call to this function.)
 }
 
 @LibEntry{string.reverse (s)|
+
 Returns a string that is the string @id{s} reversed.
 
 }
 
 @LibEntry{string.sub (s, i [, j])|
+
 Returns the substring of @id{s} that
 starts at @id{i}  and continues until @id{j};
 @id{i} and @id{j} can be negative.
@@ -6982,6 +6984,7 @@ this function also returns the index of the first unread byte in @id{s}.
 }
 
 @LibEntry{string.upper (s)|
+
 Receives a string and returns a copy of this string with all
 lowercase letters changed to uppercase.
 All other characters are left unchanged.
@@ -7264,6 +7267,11 @@ that is,
 with maximum alignment of 1 (no alignment)
 and native endianness.
 
+Native endianness assumes that the whole system is
+either big or little endian.
+The packing functions will not emulate correctly the behavior
+of mixed-endian formats.
+
 Alignment works as follows:
 For each option,
 the format gets extra padding until the data starts
@@ -7272,6 +7280,7 @@ option size and the maximum alignment;
 this minimum must be a power of 2.
 Options @St{c} and @St{z} are not aligned;
 option @St{s} follows the alignment of its starting integer.
+
 
 All padding is filled with zeros by @Lid{string.pack}
 (and ignored by @Lid{string.unpack}).
@@ -7296,8 +7305,24 @@ or one plus the length of the subject string.
 As in the string library,
 negative indices count from the end of the string.
 
+Functions that create byte sequences
+accept all values up to @T{0x7FFFFFFF},
+as defined in the original UTF-8 specification;
+that implies byte sequences of up to six bytes.
+
+Functions that interpret byte sequences only accept
+valid sequences (well formed and not overlong).
+By default, they only accept byte sequences
+that result in valid Unicode code points,
+rejecting values greater than @T{10FFFF} and surrogates.
+A boolean argument @id{lax}, when available,
+lifts these checks,
+so that all values up to @T{0x7FFFFFFF} are accepted.
+(Not well formed and overlong sequences are still rejected.)
+
 
 @LibEntry{utf8.char (@Cdots)|
+
 Receives zero or more integers,
 converts each one to its corresponding UTF-8 byte sequence
 and returns a string with the concatenation of all these sequences.
@@ -7305,14 +7330,15 @@ and returns a string with the concatenation of all these sequences.
 }
 
 @LibEntry{utf8.charpattern|
-The pattern (a string, not a function) @St{[\0-\x7F\xC2-\xF4][\x80-\xBF]*}
+
+The pattern (a string, not a function) @St{[\0-\x7F\xC2-\xFD][\x80-\xBF]*}
 @see{pm},
 which matches exactly one UTF-8 byte sequence,
 assuming that the subject is a valid UTF-8 string.
 
 }
 
-@LibEntry{utf8.codes (s)|
+@LibEntry{utf8.codes (s [, lax])|
 
 Returns values so that the construction
 @verbatim{
@@ -7325,7 +7351,8 @@ It raises an error if it meets any invalid byte sequence.
 
 }
 
-@LibEntry{utf8.codepoint (s [, i [, j]])|
+@LibEntry{utf8.codepoint (s [, i [, j [, lax]]])|
+
 Returns the codepoints (as integers) from all characters in @id{s}
 that start between byte position @id{i} and @id{j} (both included).
 The default for @id{i} is 1 and for @id{j} is @id{i}.
@@ -7333,7 +7360,8 @@ It raises an error if it meets any invalid byte sequence.
 
 }
 
-@LibEntry{utf8.len (s [, i [, j]])|
+@LibEntry{utf8.len (s [, i [, j [, lax]]])|
+
 Returns the number of UTF-8 characters in string @id{s}
 that start between positions @id{i} and @id{j} (both inclusive).
 The default for @id{i} is @num{1} and for @id{j} is @num{-1}.
@@ -7343,6 +7371,7 @@ returns a false value plus the position of the first invalid byte.
 }
 
 @LibEntry{utf8.offset (s, n [, i])|
+
 Returns the position (in bytes) where the encoding of the
 @id{n}-th character of @id{s}
 (counting from position @id{i}) starts.
@@ -7521,7 +7550,7 @@ returns the arc tangent of @id{y}.
 
 @LibEntry{math.ceil (x)|
 
-Returns the smallest integral value larger than or equal to @id{x}.
+Returns the smallest integral value greater than or equal to @id{x}.
 
 }
 
@@ -7546,7 +7575,7 @@ Returns the value @M{e@sp{x}}
 
 @LibEntry{math.floor (x)|
 
-Returns the largest integral value smaller than or equal to @id{x}.
+Returns the largest integral value less than or equal to @id{x}.
 
 }
 
@@ -7560,7 +7589,7 @@ that rounds the quotient towards zero. (integer/float)
 @LibEntry{math.huge|
 
 The float value @idx{HUGE_VAL},
-a value larger than any other numeric value.
+a value greater than any other numeric value.
 
 }
 
@@ -7628,14 +7657,10 @@ is equivalent to @T{math.random(1,n)}.
 The call @T{math.random(0)} produces an integer with
 all bits (pseudo)random.
 
-Lua initializes its pseudo-random generator with
-a weak attempt for ``randomness'',
+Lua initializes its pseudo-random generator with the equivalent of
+a call to @Lid{math.randomseed} with no arguments,
 so that @id{math.random} should generate
 different sequences of results each time the program runs.
-To ensure a required level of randomness to the initial state
-(or contrarily, to have a deterministic sequence,
-for instance when debugging a program),
-you should call @Lid{math.randomseed} explicitly.
 
 The results from this function have good statistical qualities,
 but they are not cryptographically secure.
@@ -7645,13 +7670,22 @@ some number of previous results.)
 
 }
 
-@LibEntry{math.randomseed (x [, y])|
+@LibEntry{math.randomseed ([x [, y]])|
 
-The integer parameters @id{x} and @id{y} are
-concatenated into a 128-bit @Q{seed} that
+When called with at least one argument,
+the integer parameters @id{x} and @id{y} are
+concatenated into a 128-bit @emphx{seed} that
 is used to reinitialize the pseudo-random generator;
 equal seeds produce equal sequences of numbers.
 The default for @id{y} is zero.
+
+When called with no arguments,
+Lua generates a seed with
+a weak attempt for randomness.
+To ensure a required level of randomness to the initial state
+(or contrarily, to have a deterministic sequence,
+for instance when debugging a program),
+you should call @Lid{math.randomseed} with explicit arguments.
 
 }
 
@@ -8005,8 +8039,8 @@ or there is any input from some special files
 }
 
 }
-For the last two cases, @id{size}
-specifies the size of the buffer, in bytes.
+For the last two cases,
+@id{size} is a hint for the size of the buffer, in bytes.
 The default is an appropriate size.
 
 }
@@ -8296,7 +8330,7 @@ of the given thread:
 @N{level 1} is the function that called @id{getinfo}
 (except for tail calls, which do not count on the stack);
 and so on.
-If @id{f} is a number larger than the number of active functions,
+If @id{f} is a number greater than the number of active functions,
 then @id{getinfo} returns @nil.
 
 The returned table can contain all the fields returned by @Lid{lua_getinfo},
@@ -8690,8 +8724,28 @@ When needed, this metamethod must be explicitly defined.
 }
 
 @item{
+The semantics of the numerical @Rw{for} loop
+over integers changed in some details.
+In particular, the control variable never wraps around.
+}
+
+@item{
 When a coroutine finishes with an error,
 its stack is unwound (to run any pending closing methods).
+}
+
+@item{
+A label for a @Rw{goto} cannot be declared where a label with the same
+name is visible, even if this other label is declared in an enclosing
+block.
+}
+
+@item{
+When finalizing an object,
+Lua does not ignore @idx{__gc} metamethods that are not functions.
+Any value will be called, if present.
+(Non-callable values will generate a warning,
+like any other error when calling a finalizer.)
 }
 
 }
@@ -8712,6 +8766,12 @@ The function @Lid{io.lines} now returns three extra values,
 besides the iterator function.
 You can enclose the call in parentheses if you need to
 discard these extra results.
+}
+
+@item{
+By default, the decoding functions in the @Lid{utf8} library
+do not accept surrogates as valid code points.
+An extra parameter in these functions makes them more permissive.
 }
 
 }
@@ -8754,7 +8814,7 @@ address space.)
 }
 
 @item{
-The constant @Lid{LUA_ERRGCMM} was removed.
+The constant @id{LUA_ERRGCMM} was removed.
 Errors in finalizers are never propagated;
 instead, they generate a warning.
 }

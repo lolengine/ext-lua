@@ -193,6 +193,7 @@ typedef struct global_State {
   l_mem totalbytes;  /* number of bytes currently allocated - GCdebt */
   l_mem GCdebt;  /* bytes allocated not yet compensated by the collector */
   lu_mem GCestimate;  /* an estimate of the non-garbage memory in use */
+  lu_mem lastatomic;  /* see function 'genstep' in file 'lgc.c' */
   stringtable strt;  /* hash table for strings */
   TValue l_registry;
   TValue nilvalue;  /* a nil value */
@@ -316,7 +317,7 @@ LUAI_FUNC CallInfo *luaE_extendCI (lua_State *L);
 LUAI_FUNC void luaE_freeCI (lua_State *L);
 LUAI_FUNC void luaE_shrinkCI (lua_State *L);
 LUAI_FUNC void luaE_enterCcall (lua_State *L);
-LUAI_FUNC void luaE_warning (lua_State *L, const char *msg);
+LUAI_FUNC void luaE_warning (lua_State *L, const char *msg, int tocont);
 
 
 #define luaE_exitCcall(L)	((L)->nCcalls--)

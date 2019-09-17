@@ -24,18 +24,12 @@
 static int luaB_print (lua_State *L) {
   int n = lua_gettop(L);  /* number of arguments */
   int i;
-  lua_getglobal(L, "tostring");
-  for (i=1; i<=n; i++) {
-    const char *s;
+  for (i = 1; i <= n; i++) {  /* for each argument */
     size_t l;
-    lua_pushvalue(L, -1);  /* function to be called */
-    lua_pushvalue(L, i);   /* value to print */
-    lua_call(L, 1, 1);
-    s = lua_tolstring(L, -1, &l);  /* get result */
-    if (s == NULL)
-      return luaL_error(L, "'tostring' must return a string to 'print'");
-    if (i>1) lua_writestring("\t", 1);
-    lua_writestring(s, l);
+    const char *s = luaL_tolstring(L, i, &l);  /* convert it to string */
+    if (i > 1)  /* not the first element? */
+      lua_writestring("\t", 1);  /* add a tab before it */
+    lua_writestring(s, l);  /* print it */
     lua_pop(L, 1);  /* pop result */
   }
   lua_writeline();
@@ -43,9 +37,20 @@ static int luaB_print (lua_State *L) {
 }
 
 
+/*
+** Creates a warning with all given arguments.
+** Check first for errors; otherwise an error may interrupt
+** the composition of a warning, leaving it unfinished.
+*/
 static int luaB_warn (lua_State *L) {
-  const char *msg = luaL_checkstring(L, 1);
-  lua_warning(L, msg, lua_toboolean(L, 2));
+  int n = lua_gettop(L);  /* number of arguments */
+  int i;
+  luaL_checkstring(L, 1);  /* at least one argument */
+  for (i = 2; i <= n; i++)
+    luaL_checkstring(L, i);  /* make sure all arguments are strings */
+  for (i = 1; i < n; i++)  /* compose warning */
+    lua_warning(L, lua_tostring(L, i), 1);
+  lua_warning(L, lua_tostring(L, n), 0);  /* close warning */
   return 0;
 }
 
@@ -101,7 +106,7 @@ static int luaB_tonumber (lua_State *L) {
       return 1;
     }  /* else not a number */
   }  /* else not a number */
-  lua_pushnil(L);  /* not a number */
+  luaL_pushfail(L);  /* not a number */
   return 1;
 }
 
@@ -303,9 +308,9 @@ static int load_aux (lua_State *L, int status, int envidx) {
     return 1;
   }
   else {  /* error (message is on top of the stack) */
-    lua_pushnil(L);
+    luaL_pushfail(L);
     lua_insert(L, -2);  /* put before error message */
-    return 2;  /* return nil plus error message */
+    return 2;  /* return fail plus error message */
   }
 }
 

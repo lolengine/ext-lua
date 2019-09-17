@@ -40,7 +40,7 @@ CWARNS= $(CWARNSCPP) $(CWARNSC)
 
 
 # -DEXTERNMEMCHECK -DHARDSTACKTESTS -DHARDMEMTESTS -DTRACEMEM='"tempmem"'
-# -DMAXINDEXRK=1
+# -DMAXINDEXRK=1 -DLUA_COMPAT_5_3
 # -g -DLUA_USER_H='"ltests.h"'
 # -pg -malign-double
 # -DLUA_USE_CTYPE -DLUA_USE_APICHECK
@@ -107,7 +107,6 @@ $(LUAC_T): $(LUAC_O) $(CORE_T)
 	$(CC) -o $@ $(MYLDFLAGS) $(LUAC_O) $(CORE_T) $(LIBS) $(MYLIBS)
 
 clean:
-	rcsclean -u
 	$(RM) $(ALL_T) $(ALL_O)
 
 depend:

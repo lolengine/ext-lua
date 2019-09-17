@@ -57,12 +57,18 @@ enum OpMode {iABC, iABx, iAsBx, iAx, isJ};  /* basic instruction formats */
 
 #define POS_sJ		POS_A
 
+
 /*
 ** limits for opcode arguments.
-** we use (signed) int to manipulate most arguments,
-** so they must fit in LUAI_BITSINT-1 bits (-1 for sign)
+** we use (signed) 'int' to manipulate most arguments,
+** so they must fit in ints.
 */
-#if SIZE_Bx < LUAI_BITSINT-1
+
+/* Check whether type 'int' has at least 'b' bits ('b' < 32) */
+#define L_INTHASBITS(b)		((UINT_MAX >> ((b) - 1)) >= 1)
+
+
+#if L_INTHASBITS(SIZE_Bx)
 #define MAXARG_Bx	((1<<SIZE_Bx)-1)
 #else
 #define MAXARG_Bx	MAX_INT
@@ -71,13 +77,13 @@ enum OpMode {iABC, iABx, iAsBx, iAx, isJ};  /* basic instruction formats */
 #define OFFSET_sBx	(MAXARG_Bx>>1)         /* 'sBx' is signed */
 
 
-#if SIZE_Ax < LUAI_BITSINT-1
+#if L_INTHASBITS(SIZE_Ax)
 #define MAXARG_Ax	((1<<SIZE_Ax)-1)
 #else
 #define MAXARG_Ax	MAX_INT
 #endif
 
-#if SIZE_sJ < LUAI_BITSINT-1
+#if L_INTHASBITS(SIZE_sJ)
 #define MAXARG_sJ	((1 << SIZE_sJ) - 1)
 #else
 #define MAXARG_sJ	MAX_INT
@@ -208,7 +214,7 @@ OP_SETTABLE,/*	A B C	R(A)[R(B)] := RK(C)				*/
 OP_SETI,/*	A B C	R(A)[B] := RK(C)				*/
 OP_SETFIELD,/*	A B C	R(A)[K(B):string] := RK(C)			*/
 
-OP_NEWTABLE,/*	A B C	R(A) := {} (size = B,C)				*/
+OP_NEWTABLE,/*	A B C	R(A) := {}					*/
 
 OP_SELF,/*	A B C	R(A+1) := R(B); R(A) := R(B)[RK(C):string]	*/
 
@@ -249,6 +255,10 @@ OP_BXOR,/*	A B C	R(A) := R(B) ~ R(C)				*/
 OP_SHL,/*	A B C	R(A) := R(B) << R(C)				*/
 OP_SHR,/*	A B C	R(A) := R(B) >> R(C)				*/
 
+OP_MMBIN,/*	A B C	call B metamethod for previous bin. operation	*/
+OP_MMBINI,/*	A B C	call B metamethod for previous binI. operation	*/
+OP_MMBINK,/*	A B C	call B metamethod for previous binK. operation	*/
+
 OP_UNM,/*	A B	R(A) := -R(B)					*/
 OP_BNOT,/*	A B	R(A) := ~R(B)					*/
 OP_NOT,/*	A B	R(A) := not R(B)				*/
@@ -280,9 +290,9 @@ OP_RETURN,/*	A B C	return R(A), ... ,R(A+B-2)	(see note)	*/
 OP_RETURN0,/*	  	return 						*/
 OP_RETURN1,/*	A 	return R(A)					*/
 
-OP_FORLOOP,/*	A Bx	R(A)+=R(A+2);
-			if R(A) <?= R(A+1) then { pc-=Bx; R(A+3)=R(A) }	*/
-OP_FORPREP,/*	A Bx	R(A)-=R(A+2); pc+=Bx				*/
+OP_FORLOOP,/*	A Bx	update counters; if loop continues then pc-=Bx; */
+OP_FORPREP,/*	A Bx	<check values and prepare counters>;
+                        if not to run then pc+=Bx+1;			*/
 
 OP_TFORPREP,/*	A Bx	create upvalue for R(A + 3); pc+=Bx		*/
 OP_TFORCALL,/*	A C	R(A+4), ... ,R(A+3+C) := R(A)(R(A+1), R(A+2));	*/
@@ -315,10 +325,16 @@ OP_EXTRAARG/*	Ax	extra (larger) argument for previous opcode	*/
 
   (*) In OP_RETURN, if (B == 0) then return up to 'top'.
 
-  (*) In OP_SETLIST, if (B == 0) then real B = 'top'; if (C == 0) then
-  next 'instruction' is EXTRAARG(real C).
+  (*) In OP_LOADKX and OP_NEWTABLE, the next instruction is always
+  EXTRAARG.
 
-  (*) In OP_LOADKX, the next 'instruction' is always EXTRAARG.
+  (*) In OP_SETLIST, if (B == 0) then real B = 'top'; if k, then
+  real C = EXTRAARG _ C (the bits of EXTRAARG concatenated with the
+  bits of C).
+
+  (*) In OP_NEWTABLE, B is log2 of the hash size (which is always a
+  power of 2) plus 1, or zero for size zero. If not k, the array size
+  is C. Otherwise, the array size is EXTRAARG _ C.
 
   (*) For comparisons, k specifies what condition the test should accept
   (true or false).
@@ -326,10 +342,9 @@ OP_EXTRAARG/*	Ax	extra (larger) argument for previous opcode	*/
   (*) All 'skips' (pc++) assume that next instruction is a jump.
 
   (*) In instructions OP_RETURN/OP_TAILCALL, 'k' specifies that the
-  function either builds upvalues, which may need to be closed, or is
-  vararg, which must be corrected before returning. When 'k' is true,
-  C > 0 means the function is vararg and (C - 1) is its number of
-  fixed parameters.
+  function builds upvalues, which may need to be closed. C > 0 means
+  the function is vararg, so that its 'func' must be corrected before
+  returning; in this case, (C - 1) is its number of fixed parameters.
 
   (*) In comparisons with an immediate operand, C signals whether the
   original operand was a float.
@@ -344,6 +359,7 @@ OP_EXTRAARG/*	Ax	extra (larger) argument for previous opcode	*/
 ** bit 4: operator is a test (next instruction must be a jump)
 ** bit 5: instruction uses 'L->top' set by previous instruction (when B == 0)
 ** bit 6: instruction sets 'L->top' for next instruction (when C == 0)
+** bit 7: instruction is an MM instruction (call a metamethod)
 */
 
 LUAI_DDEC(const lu_byte luaP_opmodes[NUM_OPCODES];)
@@ -353,6 +369,7 @@ LUAI_DDEC(const lu_byte luaP_opmodes[NUM_OPCODES];)
 #define testTMode(m)	(luaP_opmodes[m] & (1 << 4))
 #define testITMode(m)	(luaP_opmodes[m] & (1 << 5))
 #define testOTMode(m)	(luaP_opmodes[m] & (1 << 6))
+#define testMMMode(m)	(luaP_opmodes[m] & (1 << 7))
 
 /* "out top" (set top for next instruction) */
 #define isOT(i)  \
@@ -362,11 +379,11 @@ LUAI_DDEC(const lu_byte luaP_opmodes[NUM_OPCODES];)
 /* "in top" (uses top from previous instruction) */
 #define isIT(i)		(testITMode(GET_OPCODE(i)) && GETARG_B(i) == 0)
 
-#define opmode(ot,it,t,a,m) (((ot)<<6) | ((it)<<5) | ((t)<<4) | ((a)<<3) | (m))
+#define opmode(mm,ot,it,t,a,m)  \
+    (((mm) << 7) | ((ot) << 6) | ((it) << 5) | ((t) << 4) | ((a) << 3) | (m))
 
 
 /* number of list items to accumulate before a SETLIST instruction */
 #define LFIELDS_PER_FLUSH	50
-
 
 #endif

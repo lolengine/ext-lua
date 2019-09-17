@@ -198,11 +198,11 @@ static void LoadUpvalues (LoadState *S, Proto *f) {
   n = LoadInt(S);
   f->upvalues = luaM_newvectorchecked(S->L, n, Upvaldesc);
   f->sizeupvalues = n;
-  for (i = 0; i < n; i++)
-    f->upvalues[i].name = NULL;
   for (i = 0; i < n; i++) {
+    f->upvalues[i].name = NULL;
     f->upvalues[i].instack = LoadByte(S);
     f->upvalues[i].idx = LoadByte(S);
+    f->upvalues[i].kind = LoadByte(S);
   }
 }
 
@@ -271,8 +271,8 @@ static void fchecksize (LoadState *S, size_t size, const char *tname) {
 #define checksize(S,t)	fchecksize(S,sizeof(t),#t)
 
 static void checkHeader (LoadState *S) {
-  /* 1st char already checked */
-  checkliteral(S, LUA_SIGNATURE + 1, "not a binary chunk");
+  /* skip 1st char (already read and checked) */
+  checkliteral(S, &LUA_SIGNATURE[1], "not a binary chunk");
   if (LoadInt(S) != LUAC_VERSION)
     error(S, "version mismatch");
   if (LoadByte(S) != LUAC_FORMAT)

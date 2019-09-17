@@ -299,14 +299,14 @@ static IdxT partition (lua_State *L, IdxT lo, IdxT up) {
   /* loop invariant: a[lo .. i] <= P <= a[j .. up] */
   for (;;) {
     /* next loop: repeat ++i while a[i] < P */
-    while (lua_geti(L, 1, ++i), sort_comp(L, -1, -2)) {
+    while ((void)lua_geti(L, 1, ++i), sort_comp(L, -1, -2)) {
       if (i == up - 1)  /* a[i] < P  but a[up - 1] == P  ?? */
         luaL_error(L, "invalid order function for sorting");
       lua_pop(L, 1);  /* remove a[i] */
     }
     /* after the loop, a[i] >= P and a[lo .. i - 1] < P */
     /* next loop: repeat --j while P < a[j] */
-    while (lua_geti(L, 1, --j), sort_comp(L, -3, -1)) {
+    while ((void)lua_geti(L, 1, --j), sort_comp(L, -3, -1)) {
       if (j < i)  /* j < i  but  a[j] > P ?? */
         luaL_error(L, "invalid order function for sorting");
       lua_pop(L, 1);  /* remove a[j] */
@@ -338,7 +338,7 @@ static IdxT choosePivot (IdxT lo, IdxT up, unsigned int rnd) {
 
 
 /*
-** QuickSort algorithm (recursive function)
+** Quicksort algorithm (recursive function)
 */
 static void auxsort (lua_State *L, IdxT lo, IdxT up,
                                    unsigned int rnd) {

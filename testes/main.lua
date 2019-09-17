@@ -43,6 +43,8 @@ local function getoutput ()
 end
 
 local function checkprogout (s)
+  -- expected result must end with new line
+  assert(string.sub(s, -1) == "\n")
   local t = getoutput()
   for line in string.gmatch(s, ".-\n") do
     assert(string.find(t, line, 1, true))
@@ -142,12 +144,18 @@ do
   prepfile("print(package.path, package.cpath)")
   RUN('env LUA_INIT="error(10)" LUA_PATH=xxx LUA_CPATH=xxx lua -E %s > %s',
        prog, out)
+  local output = getoutput()
+  defaultpath = string.match(output, "^(.-)\t")
+  defaultCpath = string.match(output, "\t(.-)$")
+
+  -- running with an empty environment
+  RUN('env -i lua %s > %s', prog, out)
   local out = getoutput()
-  defaultpath = string.match(out, "^(.-)\t")
-  defaultCpath = string.match(out, "\t(.-)$")
+  assert(defaultpath == string.match(output, "^(.-)\t"))
+  assert(defaultCpath == string.match(output, "\t(.-)$"))
 end
 
--- paths did not changed
+-- paths did not change
 assert(not string.find(defaultpath, "xxx") and
        string.find(defaultpath, "lua") and
        not string.find(defaultCpath, "xxx") and
@@ -160,15 +168,20 @@ local function convert (p)
   RUN('env LUA_PATH="%s" lua %s > %s', p, prog, out)
   local expected = getoutput()
   expected = string.sub(expected, 1, -2)   -- cut final end of line
-  assert(string.gsub(p, ";;", ";"..defaultpath..";") == expected)
+  if string.find(p, ";;") then
+    p = string.gsub(p, ";;", ";"..defaultpath..";")
+    p = string.gsub(p, "^;", "")   -- remove ';' at the beginning
+    p = string.gsub(p, ";$", "")   -- remove ';' at the end
+  end
+  assert(p == expected)
 end
 
 convert(";")
 convert(";;")
-convert(";;;")
-convert(";;;;")
-convert(";;;;;")
-convert(";;a;;;bc")
+convert("a;;b")
+convert(";;b")
+convert("a;;")
+convert("a;b;;c")
 
 
 -- test -l over multiple libraries
@@ -207,6 +220,42 @@ assert(string.find(getoutput(), "error calling 'print'"))
 -- test 'debug.debug'
 RUN('echo "io.stderr:write(1000)\ncont" | lua -e "require\'debug\'.debug()" 2> %s', out)
 checkout("lua_debug> 1000lua_debug> ")
+
+
+print("testing warnings")
+
+-- no warnings by default
+RUN('echo "io.stderr:write(1); warn[[XXX]]" | lua 2> %s', out)
+checkout("1")
+
+prepfile[[
+warn("@allow")               -- unknown control, ignored
+warn("@off", "XXX", "@off")  -- these are not control messages
+warn("@off")                 -- this one is
+warn("@on", "YYY", "@on")    -- not control, but warn is off
+warn("@off")                 -- keep it off
+warn("@on")                  -- restart warnings
+warn("", "@on")              -- again, no control, real warning
+warn("@on")                  -- keep it "started"
+warn("Z", "Z", "Z")          -- common warning
+]]
+RUN('lua -W %s 2> %s', prog, out)
+checkout[[
+Lua warning: @offXXX@off
+Lua warning: @on
+Lua warning: ZZZ
+]]
+
+prepfile[[
+warn("@allow")
+-- create two objects to be finalized when closing state
+-- the errors in the finalizers must generate warnings
+u1 = setmetatable({}, {__gc = function () error("XYZ") end})
+u2 = setmetatable({}, {__gc = function () error("ZYX") end})
+]]
+RUN('lua -W %s 2> %s', prog, out)
+checkprogout("ZYX)\nXYZ)\n")
+
 
 -- test many arguments
 prepfile[[print(({...})[30])]]
@@ -281,7 +330,7 @@ debug = require"debug"
 print(debug.getinfo(1).currentline)
 ]]
 RUN('lua %s > %s', prog, out)
-checkprogout('3')
+checkprogout('3\n')
 
 -- close Lua with an open file
 prepfile(string.format([[io.output(%q); io.write('alo')]], out))
@@ -309,15 +358,16 @@ NoRun("", "lua %s", prog)   -- no message
 
 -- to-be-closed variables in main chunk
 prepfile[[
-  local *toclose x = function (err)
-    assert(err == 120)
-    print("Ok")
-  end
-  local *toclose e1 = function () error(120) end
+  local x <close> = setmetatable({},
+        {__close = function (self, err)
+                     assert(err == nil)
+                     print("Ok")
+                   end})
+  local e1 <close> = setmetatable({}, {__close = function () print(120) end})
   os.exit(true, true)
 ]]
 RUN('lua %s > %s', prog, out)
-checkprogout("Ok")
+checkprogout("120\nOk\n")
 
 
 -- remove temporary files
@@ -336,10 +386,33 @@ NoRun("syntax error", "lua -e a")
 NoRun("'-l' needs argument", "lua -l")
 
 
-if T then   -- auxiliary library?
+if T then   -- test library?
   print("testing 'not enough memory' to create a state")
   NoRun("not enough memory", "env MEMLIMIT=100 lua")
+
+  -- testing 'warn'
+  warn("@store")
+  warn("@123", "456", "789")
+  assert(_WARN == "@123456789"); _WARN = nil
+
+  warn("zip", "", " ", "zap")
+  assert(_WARN == "zip zap"); _WARN = nil
+  warn("ZIP", "", " ", "ZAP")
+  assert(_WARN == "ZIP ZAP"); _WARN = nil
+  warn("@normal")
 end
+
+do
+  -- 'warn' must get at least one argument
+  local st, msg = pcall(warn)
+  assert(string.find(msg, "string expected"))
+
+  -- 'warn' does not leave unfinished warning in case of errors
+  -- (message would appear in next warning)
+  st, msg = pcall(warn, "SHOULD NOT APPEAR", {})
+  assert(string.find(msg, "string expected"))
+end
+
 print('+')
 
 print('testing Ctrl C')

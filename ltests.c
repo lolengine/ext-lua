@@ -51,9 +51,8 @@ static int runC (lua_State *L, lua_State *L1, const char *pc);
 
 
 static void setnameval (lua_State *L, const char *name, int val) {
-  lua_pushstring(L, name);
   lua_pushinteger(L, val);
-  lua_settable(L, -3);
+  lua_setfield(L, -2, name);
 }
 
 
@@ -63,8 +62,10 @@ static void pushobject (lua_State *L, const TValue *o) {
 }
 
 
-static void badexit (const char *fmt, const char *s) {
-  fprintf(stderr, fmt, s);
+static void badexit (const char *fmt, const char *s1, const char *s2) {
+  fprintf(stderr, fmt, s1);
+  if (s2)
+    fprintf(stderr, "extra info: %s\n", s2);
   /* avoid assertion failures when exiting */
   l_memcontrol.numblocks = l_memcontrol.total = 0;
   exit(EXIT_FAILURE);
@@ -73,39 +74,79 @@ static void badexit (const char *fmt, const char *s) {
 
 static int tpanic (lua_State *L) {
   return (badexit("PANIC: unprotected error in call to Lua API (%s)\n",
-                   lua_tostring(L, -1)),
+                   lua_tostring(L, -1), NULL),
           0);  /* do not return to Lua */
 }
 
 
 /*
 ** Warning function for tests. Fist, it concatenates all parts of
-** a warning in buffer 'buff'. Then:
-** - messages starting with '#' are shown on standard output (used to
-** test explicit warnings);
-** - messages containing '@' are stored in global '_WARN' (used to test
-** errors that generate warnings);
+** a warning in buffer 'buff'. Then, it has three modes:
+** - 0.normal: messages starting with '#' are shown on standard output;
 ** - other messages abort the tests (they represent real warning
 ** conditions; the standard tests should not generate these conditions
-** unexpectedly).
+** unexpectedly);
+** - 1.allow: all messages are shown;
+** - 2.store: all warnings go to the global '_WARN';
 */
 static void warnf (void *ud, const char *msg, int tocont) {
+  lua_State *L = cast(lua_State *, ud);
   static char buff[200] = "";  /* should be enough for tests... */
+  static int onoff = 0;
+  static int mode = 0;  /* start in normal mode */
+  static int lasttocont = 0;
+  if (!lasttocont && !tocont && *msg == '@') {  /* control message? */
+    if (buff[0] != '\0')
+      badexit("Control warning during warning: %s\naborting...\n", msg, buff);
+    if (strcmp(msg, "@off") == 0)
+      onoff = 0;
+    else if (strcmp(msg, "@on") == 0)
+      onoff = 1;
+    else if (strcmp(msg, "@normal") == 0)
+      mode = 0;
+    else if (strcmp(msg, "@allow") == 0)
+      mode = 1;
+    else if (strcmp(msg, "@store") == 0)
+      mode = 2;
+    else
+      badexit("Invalid control warning in test mode: %s\naborting...\n",
+              msg, NULL);
+    return;
+  }
+  lasttocont = tocont;
   if (strlen(msg) >= sizeof(buff) - strlen(buff))
-    badexit("%s", "warnf-buffer overflow");
+    badexit("warnf-buffer overflow (%s)\n", msg, buff);
   strcat(buff, msg);  /* add new message to current warning */
   if (!tocont) {  /* message finished? */
-    if (buff[0] == '#')  /* expected warning? */
-      printf("Expected Lua warning: %s\n", buff);  /* print it */
-    else if (strchr(buff, '@') != NULL) {  /* warning for test purposes? */
-      lua_State *L = cast(lua_State *, ud);
-      lua_unlock(L);
-      lua_pushstring(L, buff);
-      lua_setglobal(L, "_WARN");  /* assign message to global '_WARN' */
-      lua_lock(L);
+    lua_unlock(L);
+    if (lua_getglobal(L, "_WARN") == LUA_TNIL)
+      lua_pop(L, 1);  /* ok, no previous unexpected warning */
+    else {
+      badexit("Unhandled warning in store mode: %s\naborting...\n",
+              lua_tostring(L, -1), buff);
     }
-    else  /* a real warning; should not happen during tests */
-      badexit("Unexpected warning in test mode: %s\naborting...\n", buff);
+    lua_lock(L);
+    switch (mode) {
+      case 0: {  /* normal */
+        if (buff[0] != '#' && onoff)  /* unexpected warning? */
+          badexit("Unexpected warning in test mode: %s\naborting...\n",
+                  buff, NULL);
+        /* else */ /* FALLTHROUGH */
+      }
+      case 1: {  /* allow */
+        if (onoff)
+          fprintf(stderr, "Lua warning: %s\n", buff);  /* print warning */
+        break;
+      }
+      case 2: {  /* store */
+        lua_unlock(L);
+        lua_pushstring(L, buff);
+        lua_setglobal(L, "_WARN");  /* assign message to global '_WARN' */
+        lua_lock(L);
+        buff[0] = '\0';  /* prepare buffer for next warning */
+        break;
+      }
+    }
     buff[0] = '\0';  /* prepare buffer for next warning */
   }
 }
@@ -398,8 +439,7 @@ static void checkrefs (global_State *g, GCObject *o) {
       checkudata(g, gco2u(o));
       break;
     }
-    case LUA_TUPVAL:
-    case LUA_TUPVALTBC: {
+    case LUA_TUPVAL: {
       checkvalref(g, o, gco2upv(o)->v);
       break;
     }
@@ -710,12 +750,11 @@ static void printstack (lua_State *L) {
 
 
 static int get_limits (lua_State *L) {
-  lua_createtable(L, 0, 5);
-  setnameval(L, "BITS_INT", LUAI_BITSINT);
+  lua_createtable(L, 0, 6);
+  setnameval(L, "IS32INT", LUAI_IS32INT);
   setnameval(L, "MAXARG_Ax", MAXARG_Ax);
   setnameval(L, "MAXARG_Bx", MAXARG_Bx);
   setnameval(L, "OFFSET_sBx", OFFSET_sBx);
-  setnameval(L, "BITS_INT", LUAI_BITSINT);
   setnameval(L, "LFPF", LFIELDS_PER_FLUSH);
   setnameval(L, "NUM_OPCODES", NUM_OPCODES);
   return 1;
@@ -1105,14 +1144,6 @@ static int doremote (lua_State *L) {
 }
 
 
-static int int2fb_aux (lua_State *L) {
-  int b = luaO_int2fb((unsigned int)luaL_checkinteger(L, 1));
-  lua_pushinteger(L, b);
-  lua_pushinteger(L, (unsigned int)luaO_fb2int(b));
-  return 2;
-}
-
-
 static int log2_aux (lua_State *L) {
   unsigned int x = (unsigned int)luaL_checkinteger(L, 1);
   lua_pushinteger(L, luaO_ceillog2(x));
@@ -1481,6 +1512,19 @@ static int runC (lua_State *L, lua_State *L1, const char *pc) {
     else if EQ("pushvalue") {
       lua_pushvalue(L1, getindex);
     }
+    else if EQ("pushfstringI") {
+      lua_pushfstring(L1, lua_tostring(L, -2), (int)lua_tointeger(L, -1));
+    }
+    else if EQ("pushfstringS") {
+      lua_pushfstring(L1, lua_tostring(L, -2), lua_tostring(L, -1));
+    }
+    else if EQ("pushfstringP") {
+      lua_pushfstring(L1, lua_tostring(L, -2), lua_topointer(L, -1));
+    }
+    else if EQ("rawget") {
+      int t = getindex;
+      lua_rawget(L1, t);
+    }
     else if EQ("rawgeti") {
       int t = getindex;
       lua_rawgeti(L1, t, getnum);
@@ -1488,6 +1532,14 @@ static int runC (lua_State *L, lua_State *L1, const char *pc) {
     else if EQ("rawgetp") {
       int t = getindex;
       lua_rawgetp(L1, t, cast_voidp(cast_sizet(getnum)));
+    }
+    else if EQ("rawset") {
+      int t = getindex;
+      lua_rawset(L1, t);
+    }
+    else if EQ("rawseti") {
+      int t = getindex;
+      lua_rawseti(L1, t, getnum);
     }
     else if EQ("rawsetp") {
       int t = getindex;
@@ -1531,6 +1583,10 @@ static int runC (lua_State *L, lua_State *L1, const char *pc) {
       const char *s = getstring;
       lua_setfield(L1, t, s);
     }
+    else if EQ("seti") {
+      int t = getindex;
+      lua_seti(L1, t, getnum);
+    }
     else if EQ("setglobal") {
       const char *s = getstring;
       lua_setglobal(L1, s);
@@ -1557,6 +1613,9 @@ static int runC (lua_State *L, lua_State *L1, const char *pc) {
     }
     else if EQ("error") {
       lua_error(L1);
+    }
+    else if EQ("abort") {
+      abort();
     }
     else if EQ("throw") {
 #if defined(__cplusplus)
@@ -1757,7 +1816,6 @@ static const struct luaL_Reg tests_funcs[] = {
   {"pobj", gc_printobj},
   {"getref", getref},
   {"hash", hash_query},
-  {"int2fb", int2fb_aux},
   {"log2", log2_aux},
   {"limits", get_limits},
   {"listcode", listcode},

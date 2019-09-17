@@ -3,7 +3,8 @@
 
 print('testing strings and string library')
 
-local maxi, mini = math.maxinteger, math.mininteger
+local maxi <const> = math.maxinteger
+local mini <const> = math.mininteger
 
 
 local function checkerror (msg, f, ...)
@@ -55,13 +56,13 @@ a,b = string.find("123456789", "345")
 assert(string.sub("123456789", a, b) == "345")
 assert(string.find("1234567890123456789", "345", 3) == 3)
 assert(string.find("1234567890123456789", "345", 4) == 13)
-assert(string.find("1234567890123456789", "346", 4) == nil)
+assert(not string.find("1234567890123456789", "346", 4))
 assert(string.find("1234567890123456789", ".45", -9) == 13)
-assert(string.find("abcdefg", "\0", 5, 1) == nil)
+assert(not string.find("abcdefg", "\0", 5, 1))
 assert(string.find("", "") == 1)
 assert(string.find("", "", 1) == 1)
 assert(not string.find("", "", 2))
-assert(string.find('', 'aaa', 1) == nil)
+assert(not string.find('', 'aaa', 1))
 assert(('alo(.)alo'):find('(.)', 1, 1) == 4)
 
 assert(string.len("") == 0)
@@ -162,11 +163,19 @@ do  -- tests for '%p' format
   assert(string.format("%p", 4) == null)
   assert(string.format("%p", print) ~= null)
   assert(string.format("%p", coroutine.running()) ~= null)
-  assert(string.format("%p", {}) ~= string.format("%p", {}))
-  assert(string.format("%p", string.rep("a", 10)) ==
-         string.format("%p", string.rep("a", 10)))     -- short strings
-  assert(string.format("%p", string.rep("a", 300)) ~=
-         string.format("%p", string.rep("a", 300)))     -- long strings
+  do
+    local t1 = {}; local t2 = {}
+    assert(string.format("%p", t1) ~= string.format("%p", t2))
+  end
+  do     -- short strings
+    local s1 = string.rep("a", 10)
+    local s2 = string.rep("a", 10)
+  assert(string.format("%p", s1) == string.format("%p", s2))
+  end
+  do     -- long strings
+    local s1 = string.rep("a", 300); local s2 = string.rep("a", 300)
+    assert(string.format("%p", s1) ~= string.format("%p", s2))
+  end
   assert(#string.format("%90p", {}) == 90)
 end
 
@@ -249,6 +258,12 @@ do    -- longest number that can be formatted
   local s = string.format('%.99f', -(10^i))
   assert(string.len(s) >= i + 101)
   assert(tonumber(s) == -(10^i))
+
+  -- limit for floats
+  assert(10^38 < math.huge)
+  local s = string.format('%.99f', -(10^38))
+  assert(string.len(s) >= 38 + 101)
+  assert(tonumber(s) == -(10^38))
 end
 
 
@@ -399,6 +414,69 @@ do
   co = coroutine.wrap(f)
   assert(co() == "2")
 end
+
+
+if T==nil then
+  (Message or print)
+     ("\n >>> testC not active: skipping 'pushfstring' tests <<<\n")
+else
+
+  print"testing 'pushfstring'"
+
+  -- formats %U, %f, %I already tested elsewhere
+
+  local blen = 400    -- internal buffer length in 'luaO_pushfstring'
+
+  local function callpfs (op, fmt, n)
+    local x = {T.testC("pushfstring" .. op .. "; return *", fmt, n)}
+    -- stack has code, 'fmt', 'n', and result from operation
+    assert(#x == 4)  -- make sure nothing else was left in the stack
+    return x[4]
+  end
+
+  local function testpfs (op, fmt, n)
+    assert(callpfs(op, fmt, n) == string.format(fmt, n))
+  end
+
+  testpfs("I", "", 0)
+  testpfs("I", string.rep("a", blen - 1), 0)
+  testpfs("I", string.rep("a", blen), 0)
+  testpfs("I", string.rep("a", blen + 1), 0)
+
+  local str = string.rep("ab", blen) .. "%d" .. string.rep("d", blen / 2)
+  testpfs("I", str, 2^14)
+  testpfs("I", str, -2^15)
+
+  str = "%d" .. string.rep("cd", blen)
+  testpfs("I", str, 2^14)
+  testpfs("I", str, -2^15)
+
+  str = string.rep("c", blen - 2) .. "%d"
+  testpfs("I", str, 2^14)
+  testpfs("I", str, -2^15)
+
+  for l = 12, 14 do
+    local str1 = string.rep("a", l)
+    for i = 0, 500, 13 do
+      for j = 0, 500, 13 do
+        str = string.rep("a", i) .. "%s" .. string.rep("d", j)
+        testpfs("S", str, str1)
+        testpfs("S", str, str)
+      end
+    end
+  end
+
+  str = "abc %c def"
+  testpfs("I", str, string.byte("A"))
+  testpfs("I", str, 255)
+
+  str = string.rep("a", blen - 1) .. "%p" .. string.rep("cd", blen)
+  testpfs("P", str, {})
+
+  str = string.rep("%%", 3 * blen) .. "%p" .. string.rep("%%", 2 * blen)
+  testpfs("P", str, {})
+end
+
 
 print('OK')
 

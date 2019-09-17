@@ -462,6 +462,7 @@ LUA_API lua_Hook (lua_gethook) (lua_State *L);
 LUA_API int (lua_gethookmask) (lua_State *L);
 LUA_API int (lua_gethookcount) (lua_State *L);
 
+LUA_API int (lua_setCstacklimit) (lua_State *L, unsigned int limit);
 
 struct lua_Debug {
   int event;
@@ -469,6 +470,7 @@ struct lua_Debug {
   const char *namewhat;	/* (n) 'global', 'local', 'field', 'method' */
   const char *what;	/* (S) 'Lua', 'C', 'main', 'tail' */
   const char *source;	/* (S) */
+  size_t srclen;	/* (S) */
   int currentline;	/* (l) */
   int linedefined;	/* (S) */
   int lastlinedefined;	/* (S) */

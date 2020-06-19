@@ -10,8 +10,6 @@
 #include "lprefix.h"
 
 
-#include <stddef.h>
-
 #include "lopcodes.h"
 
 
@@ -24,7 +22,9 @@ LUAI_DDEF const lu_byte luaP_opmodes[NUM_OPCODES] = {
  ,opmode(0, 0, 0, 0, 1, iAsBx)		/* OP_LOADF */
  ,opmode(0, 0, 0, 0, 1, iABx)		/* OP_LOADK */
  ,opmode(0, 0, 0, 0, 1, iABx)		/* OP_LOADKX */
- ,opmode(0, 0, 0, 0, 1, iABC)		/* OP_LOADBOOL */
+ ,opmode(0, 0, 0, 0, 1, iABC)		/* OP_LOADFALSE */
+ ,opmode(0, 0, 0, 0, 1, iABC)		/* OP_LFALSESKIP */
+ ,opmode(0, 0, 0, 0, 1, iABC)		/* OP_LOADTRUE */
  ,opmode(0, 0, 0, 0, 1, iABC)		/* OP_LOADNIL */
  ,opmode(0, 0, 0, 0, 1, iABC)		/* OP_GETUPVAL */
  ,opmode(0, 0, 0, 0, 0, iABC)		/* OP_SETUPVAL */
@@ -39,12 +39,6 @@ LUAI_DDEF const lu_byte luaP_opmodes[NUM_OPCODES] = {
  ,opmode(0, 0, 0, 0, 1, iABC)		/* OP_NEWTABLE */
  ,opmode(0, 0, 0, 0, 1, iABC)		/* OP_SELF */
  ,opmode(0, 0, 0, 0, 1, iABC)		/* OP_ADDI */
- ,opmode(0, 0, 0, 0, 1, iABC)		/* OP_SUBI */
- ,opmode(0, 0, 0, 0, 1, iABC)		/* OP_MULI */
- ,opmode(0, 0, 0, 0, 1, iABC)		/* OP_MODI */
- ,opmode(0, 0, 0, 0, 1, iABC)		/* OP_POWI */
- ,opmode(0, 0, 0, 0, 1, iABC)		/* OP_DIVI */
- ,opmode(0, 0, 0, 0, 1, iABC)		/* OP_IDIVI */
  ,opmode(0, 0, 0, 0, 1, iABC)		/* OP_ADDK */
  ,opmode(0, 0, 0, 0, 1, iABC)		/* OP_SUBK */
  ,opmode(0, 0, 0, 0, 1, iABC)		/* OP_MULK */

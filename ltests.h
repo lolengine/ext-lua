@@ -25,9 +25,6 @@
 #define lua_assert(c)           assert(c)
 
 
-/* include opcode names */
-#define LUAI_DEFOPNAMES
-
 
 /* compiled with -O0, Lua uses a lot of C stack space... */
 #undef LUAI_MAXCSTACK
@@ -61,7 +58,7 @@ typedef struct Memcontrol {
   unsigned long maxmem;
   unsigned long memlimit;
   unsigned long countlimit;
-  unsigned long objcount[LUA_NUMTAGS];
+  unsigned long objcount[LUA_NUMTYPES];
 } Memcontrol;
 
 LUA_API Memcontrol l_memcontrol;
@@ -121,18 +118,22 @@ LUA_API void *debug_realloc (void *ud, void *block,
 #define MINSTRTABSIZE		2
 #define MAXIWTHABS		3
 
+#define STRCACHE_N	23
+#define STRCACHE_M	5
+
+#undef LUAI_USER_ALIGNMENT_T
+#define LUAI_USER_ALIGNMENT_T   union { char b[sizeof(void*) * 8]; }
+
 
 /* make stack-overflow tests run faster */
 #undef LUAI_MAXSTACK
 #define LUAI_MAXSTACK   50000
 
 
-#undef LUAI_USER_ALIGNMENT_T
-#define LUAI_USER_ALIGNMENT_T   union { char b[sizeof(void*) * 8]; }
+/* force Lua to use its own implementations */
+#undef lua_strx2number
+#undef lua_number2strx
 
-
-#define STRCACHE_N	23
-#define STRCACHE_M	5
 
 #endif
 

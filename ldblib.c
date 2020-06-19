@@ -24,7 +24,7 @@
 ** The hook table at registry[HOOKKEY] maps threads to their current
 ** hook function.
 */
-static const char* HOOKKEY = "_HOOKKEY";
+static const char *const HOOKKEY = "_HOOKKEY";
 
 
 /*
@@ -202,8 +202,6 @@ static int db_getinfo (lua_State *L) {
 static int db_getlocal (lua_State *L) {
   int arg;
   lua_State *L1 = getthread(L, &arg);
-  lua_Debug ar;
-  const char *name;
   int nvar = (int)luaL_checkinteger(L, arg + 2);  /* local-variable index */
   if (lua_isfunction(L, arg + 1)) {  /* function argument? */
     lua_pushvalue(L, arg + 1);  /* push function */
@@ -211,6 +209,8 @@ static int db_getlocal (lua_State *L) {
     return 1;  /* return only name (there is no value) */
   }
   else {  /* stack-level argument */
+    lua_Debug ar;
+    const char *name;
     int level = (int)luaL_checkinteger(L, arg + 1);
     if (!lua_getstack(L1, level, &ar))  /* out of range? */
       return luaL_argerror(L, arg+1, "level out of range");
@@ -417,7 +417,7 @@ static int db_debug (lua_State *L) {
       return 0;
     if (luaL_loadbuffer(L, buffer, strlen(buffer), "=(debug command)") ||
         lua_pcall(L, 0, 0, 0))
-      lua_writestringerror("%s\n", lua_tostring(L, -1));
+      lua_writestringerror("%s\n", luaL_tolstring(L, -1, NULL));
     lua_settop(L, 0);  /* remove eventual returns */
   }
 }
@@ -437,9 +437,9 @@ static int db_traceback (lua_State *L) {
 }
 
 
-static int db_setCstacklimit (lua_State *L) {
+static int db_setcstacklimit (lua_State *L) {
   int limit = (int)luaL_checkinteger(L, 1);
-  int res = lua_setCstacklimit(L, limit);
+  int res = lua_setcstacklimit(L, limit);
   if (res == 0)
     lua_pushboolean(L, 0);
   else
@@ -465,7 +465,7 @@ static const luaL_Reg dblib[] = {
   {"setmetatable", db_setmetatable},
   {"setupvalue", db_setupvalue},
   {"traceback", db_traceback},
-  {"setCstacklimit", db_setCstacklimit},
+  {"setcstacklimit", db_setcstacklimit},
   {NULL, NULL}
 };
 

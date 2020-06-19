@@ -82,7 +82,7 @@ assert(c.a == nil)
 f()
 assert(c.a == 3)
 
--- old test for limits for special instructions (now just a generic test)
+-- old test for limits for special instructions
 do
   local i = 2
   local p = 4    -- p == 2^i
@@ -114,7 +114,7 @@ if rawget(_G, "T") then
   local t = T.querytab(a)
 
   for k,_ in pairs(a) do a[k] = undef end
-  collectgarbage()   -- restore GC and collect dead fiels in `a'
+  collectgarbage()   -- restore GC and collect dead fields in 'a'
   for i=0,t-1 do
     local k = querytab(a, i)
     assert(k == nil or type(k) == 'number' or k == 'alo')
@@ -262,6 +262,43 @@ do
   assert(foo() == closescope and X == true)
 
 end
+
+
+-- testing to-be-closed x compile-time constants
+-- (there were some bugs here in Lua 5.4-rc3, due to a confusion
+-- between compile levels and stack levels of variables)
+do
+  local flag = false
+  local x = setmetatable({},
+    {__close = function() assert(flag == false); flag = true end})
+  local y <const> = nil
+  local z <const> = nil
+  do
+      local a <close> = x
+  end
+  assert(flag)   -- 'x' must be closed here
+end
+
+do
+  -- similar problem, but with implicit close in for loops
+  local flag = false
+  local x = setmetatable({},
+    {__close = function () assert(flag == false); flag = true end})
+  -- return an empty iterator, nil, nil, and 'x' to be closed
+  local function a ()
+    return (function () return nil end), nil, nil, x
+  end
+  local v <const> = 1
+  local w <const> = 1
+  local x <const> = 1
+  local y <const> = 1
+  local z <const> = 1
+  for k in a() do
+      a = k
+  end    -- ending the loop must close 'x'
+  assert(flag)   -- 'x' must be closed here
+end
+
 
 
 do
